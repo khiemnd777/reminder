@@ -1,0 +1,7 @@
+/app
+/data/
+/tmp/
+.env
+.gocache/
+.gomodcache/
+*.db

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reminder Calendar</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbarSection">
+        <div class="heroActions">
+          <button id="refreshButton" class="ghost" type="button">Refresh</button>
+          <button id="syncGoogleButton" class="ghost" type="button">
+            <span>Sync Google</span>
+            <svg class="inlineButtonIcon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4.75 12a.75.75 0 0 1 .75-.75h10.69l-2.97-2.97a.75.75 0 1 1 1.06-1.06l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06l2.97-2.97H5.5a.75.75 0 0 1-.75-.75Z"></path>
+            </svg>
+            <span>System</span>
+          </button>
+          <button id="openCreateModalButton" class="button plusButton" type="button" aria-label="Create appointment">+</button>
+        </div>
+      </section>
+
+      <section>
+        <article id="googleConnectCard" class="panel">
+          <div class="providerHeader">
+            <h2>Connect Google</h2>
+          </div>
+          <p>OAuth login will store refreshable credentials in the local SQLite database.</p>
+          <a class="button" href="/auth/google/login">Connect Google Calendar</a>
+        </article>
+      </section>
+
+      <section class="contentLayout">
+        <article class="panel appointmentsPanel">
+          <div class="panelHeader">
+            <div>
+              <h2>Upcoming Appointments</h2>
+              <p id="windowLabel"></p>
+            </div>
+            <div class="rangeControls">
+              <button id="toggleFiltersButton" class="ghost filterToggleButton" type="button" aria-expanded="false" aria-controls="filtersSection">
+                <span>Filters</span>
+                <span id="filterSummary" class="filterSummary"></span>
+              </button>
+            </div>
+          </div>
+          <div id="filtersSection" class="filtersSection hidden">
+            <div class="customRange">
+              <label id="rangeFromField">
+                <span>From</span>
+                <input id="rangeFrom" type="date" />
+              </label>
+              <label id="rangeToField">
+                <span>To</span>
+                <input id="rangeTo" type="date" />
+              </label>
+              <button id="applyRangeButton" class="ghost" type="button">Apply Range</button>
+            </div>
+          </div>
+          <p id="status" class="status">Loading appointments...</p>
+          <ul id="events" class="events"></ul>
+        </article>
+      </section>
+    </main>
+
+    <div id="createModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="createModalTitle">
+      <div id="modalBackdrop" class="modalBackdrop"></div>
+      <div class="modalCard">
+        <div class="modalHeader">
+          <div>
+            <p class="eyebrow">New Appointment</p>
+            <h2 id="createModalTitle">Create Appointment</h2>
+          </div>
+          <button id="closeCreateModalButton" class="ghost iconButton" type="button" aria-label="Close create appointment dialog">×</button>
+        </div>
+        <form id="appointmentForm" class="stack">
+          <input name="title" type="text" placeholder="Title" required />
+          <label>
+            <span>Start</span>
+            <input name="startAt" type="datetime-local" required />
+          </label>
+          <label>
+            <span>End</span>
+            <input name="endAt" type="datetime-local" />
+          </label>
+          <div class="modalActions">
+            <button id="cancelCreateModalButton" class="ghost" type="button">Cancel</button>
+            <button class="button" type="submit">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="deleteConfirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="deleteConfirmTitle">
+      <div id="deleteModalBackdrop" class="modalBackdrop"></div>
+      <div class="modalCard modalCardCompact">
+        <div class="modalHeader">
+          <div>
+            <p class="eyebrow">Delete Appointment</p>
+            <h2 id="deleteConfirmTitle">Confirm Delete</h2>
+          </div>
+          <button id="closeDeleteModalButton" class="ghost iconButton" type="button" aria-label="Close delete confirmation dialog">×</button>
+        </div>
+        <p id="deleteConfirmMessage" class="modalMessage">This action will permanently remove the appointment.</p>
+        <div class="modalActions">
+          <button id="cancelDeleteButton" class="ghost" type="button">Cancel</button>
+          <button id="confirmDeleteButton" class="button dangerSolidButton" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
