@@ -145,18 +145,19 @@ EOF
 
 recreate_existing_caddy() {
   caddy_container="$1"
+  compose_project="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.project" }}')"
   compose_workdir="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')"
   compose_files="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}')"
   compose_service="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.service" }}')"
 
-  if [ -z "$compose_workdir" ] || [ -z "$compose_files" ] || [ -z "$compose_service" ]; then
+  if [ -z "$compose_project" ] || [ -z "$compose_workdir" ] || [ -z "$compose_files" ] || [ -z "$compose_service" ]; then
     return 1
   fi
 
-  log "Recreating existing Caddy service ${compose_service} from ${compose_workdir}."
+  log "Recreating existing Caddy service ${compose_project}/${compose_service} from ${compose_workdir}."
   (
     cd "$compose_workdir"
-    docker compose -f "$compose_files" up -d --force-recreate --no-deps "$compose_service"
+    docker compose -p "$compose_project" -f "$compose_files" up -d --force-recreate --no-deps "$compose_service"
   )
 }
 
