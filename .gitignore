@@ -2,6 +2,7 @@
 /data/
 /tmp/
 .env
+.env.prod
 .gocache/
 .gomodcache/
 *.db

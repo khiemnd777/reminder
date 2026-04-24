@@ -1,0 +1,39 @@
+services:
+  reminder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reminder
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    networks:
+      - reminder_net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: reminder-caddy
+    depends_on:
+      - reminder
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks:
+      - reminder_net
+
+networks:
+  reminder_net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

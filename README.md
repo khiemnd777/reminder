@@ -119,6 +119,37 @@ Build the app:
 GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go build -o app ./backend/cmd
 ```
 
+## Production Deployment
+
+GitHub Actions deploys pushes to `main` to the VPS and serves the app at:
+
+```text
+https://manle.info
+```
+
+Required repository secrets:
+
+| Secret | Description |
+| --- | --- |
+| `VPS_HOST` | VPS IP or hostname |
+| `VPS_USER` | SSH user, currently `root` |
+| `VPS_PASSWORD` | SSH password |
+| `APP_ADDR` | Production bind address from `.env.prod` |
+| `DATABASE_PATH` | Production SQLite path from `.env.prod` |
+| `GOOGLE_CLIENT_ID` | Production Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Production Google OAuth client secret |
+| `GOOGLE_REDIRECT_URL` | Production OAuth callback URL from `.env.prod` |
+
+Production GitHub Secrets should be synced from `.env.prod`. Keep `.env` local only for development.
+
+The production workflow writes those secret values to `/opt/reminder/.env` on the VPS. For `manle.info`, the production callback URL should be:
+
+```env
+GOOGLE_REDIRECT_URL=https://manle.info/auth/google/callback
+```
+
+Make sure DNS has an `A` record from `manle.info` to the VPS IP before the first deploy. Caddy listens on ports `80` and `443`, proxies to the app using `APP_ADDR`, obtains the SSL certificate automatically, and renews it through its persistent Docker volumes.
+
 ## Current v1 Limitations
 
 - credentials are stored in SQLite without encryption

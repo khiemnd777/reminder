@@ -1,0 +1,4 @@
+manle.info {
+	encode zstd gzip
+	reverse_proxy reminder{$APP_ADDR}
+}

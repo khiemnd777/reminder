@@ -1,0 +1,91 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Create dummy production env for compose validation
+        run: |
+          cat > .env <<'EOF'
+          APP_ADDR=:8086
+          DATABASE_PATH=/data/reminder.db
+          GOOGLE_CLIENT_ID=dummy-client-id
+          GOOGLE_CLIENT_SECRET=dummy-client-secret
+          GOOGLE_REDIRECT_URL=https://manle.info/auth/google/callback
+          EOF
+
+      - name: Validate production compose
+        run: docker compose -f docker-compose.prod.yml config
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: test
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload application files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          source: "backend,web,deploy,Dockerfile,docker-compose.prod.yml,go.mod,go.sum"
+          target: /opt/reminder
+          overwrite: true
+
+      - name: Configure and deploy
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_ADDR: ${{ secrets.APP_ADDR }}
+          DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URL: ${{ secrets.GOOGLE_REDIRECT_URL }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          envs: APP_ADDR,DATABASE_PATH,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_REDIRECT_URL
+          script: |
+            set -euo pipefail
+
+            mkdir -p /opt/reminder
+            cd /opt/reminder
+
+            cat > .env <<EOF
+            APP_ADDR=${APP_ADDR}
+            DATABASE_PATH=${DATABASE_PATH}
+            GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+            GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+            GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL}
+            EOF
+
+            chmod 600 .env
+            chmod +x deploy/deploy.sh
+            DEPLOY_DIR=/opt/reminder deploy/deploy.sh
