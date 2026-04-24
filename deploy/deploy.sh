@@ -101,15 +101,20 @@ configure_existing_caddy() {
   caddy_container="${existing_caddy%%:*}"
   caddyfile_path="${existing_caddy#*:}"
   backup_path="${caddyfile_path}.bak.$(date +%Y%m%d%H%M%S)"
+  temp_path="$(mktemp)"
   start_marker="# reminder managed start"
   end_marker="# reminder managed end"
 
   log "Configuring existing Caddy container ${caddy_container} with ${DOMAIN} -> 127.0.0.1:${APP_PORT}."
 
   cp "$caddyfile_path" "$backup_path"
-  sed -i "/^${start_marker}$/,/^${end_marker}$/d" "$caddyfile_path"
+  awk -v start="$start_marker" -v end="$end_marker" '
+    $0 == start { skip = 1; next }
+    $0 == end { skip = 0; next }
+    !skip { print }
+  ' "$caddyfile_path" > "$temp_path"
 
-  cat >> "$caddyfile_path" <<EOF
+  cat >> "$temp_path" <<EOF
 
 ${start_marker}
 ${DOMAIN} {
@@ -118,16 +123,41 @@ ${DOMAIN} {
 }
 ${end_marker}
 EOF
+  cat "$temp_path" > "$caddyfile_path"
+  rm -f "$temp_path"
 
-  if docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+  if docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile && docker exec "$caddy_container" grep -q "$DOMAIN" /etc/caddy/Caddyfile; then
     log "Existing Caddy reloaded successfully."
     return 0
   fi
 
-  log "Existing Caddy reload failed. Restoring previous Caddyfile."
+  log "Existing Caddy did not pick up the updated Caddyfile; recreating the Caddy container to remount it."
+  if recreate_existing_caddy "$caddy_container" && existing_caddy="$(find_existing_caddy_container)" && docker exec "${existing_caddy%%:*}" grep -q "$DOMAIN" /etc/caddy/Caddyfile; then
+    log "Existing Caddy remounted and started successfully."
+    return 0
+  fi
+
+  log "Existing Caddy update failed. Restoring previous Caddyfile."
   cp "$backup_path" "$caddyfile_path"
-  docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+  recreate_existing_caddy "$caddy_container" || docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
   exit 1
+}
+
+recreate_existing_caddy() {
+  caddy_container="$1"
+  compose_workdir="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')"
+  compose_files="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}')"
+  compose_service="$(docker inspect "$caddy_container" --format '{{ index .Config.Labels "com.docker.compose.service" }}')"
+
+  if [ -z "$compose_workdir" ] || [ -z "$compose_files" ] || [ -z "$compose_service" ]; then
+    return 1
+  fi
+
+  log "Recreating existing Caddy service ${compose_service} from ${compose_workdir}."
+  (
+    cd "$compose_workdir"
+    docker compose -f "$compose_files" up -d --force-recreate --no-deps "$compose_service"
+  )
 }
 
 main() {
