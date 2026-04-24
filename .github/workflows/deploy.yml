@@ -32,13 +32,14 @@ jobs:
           cat > .env <<'EOF'
           APP_ADDR=:8086
           DATABASE_PATH=/data/reminder.db
+          APP_PORT=8086
           GOOGLE_CLIENT_ID=dummy-client-id
           GOOGLE_CLIENT_SECRET=dummy-client-secret
           GOOGLE_REDIRECT_URL=https://manle.info/auth/google/callback
           EOF
 
       - name: Validate production compose
-        run: docker compose -f docker-compose.prod.yml config
+        run: docker compose --profile standalone -f docker-compose.prod.yml config
 
   deploy:
     name: Deploy to VPS

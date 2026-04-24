@@ -4,6 +4,7 @@ set -euo pipefail
 
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/reminder}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+DOMAIN="${DOMAIN:-manle.info}"
 
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=()
@@ -13,6 +14,24 @@ fi
 
 log() {
   printf '[deploy] %s\n' "$*"
+}
+
+derive_app_port() {
+  if [ -z "${APP_ADDR:-}" ]; then
+    log "APP_ADDR is missing."
+    exit 1
+  fi
+
+  APP_PORT="${APP_ADDR##*:}"
+
+  case "$APP_PORT" in
+    ''|*[!0-9]*)
+      log "APP_ADDR must end with a numeric port; got '${APP_ADDR}'."
+      exit 1
+      ;;
+  esac
+
+  export APP_PORT
 }
 
 install_docker() {
@@ -51,9 +70,70 @@ require_compose() {
   fi
 }
 
+find_existing_caddy_container() {
+  for container_id in $(docker ps --filter "name=caddy" --format '{{.ID}}'); do
+    caddyfile_path="$(docker inspect "$container_id" --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')"
+    if [ -n "$caddyfile_path" ] && [ -f "$caddyfile_path" ]; then
+      printf '%s:%s\n' "$container_id" "$caddyfile_path"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+host_web_ports_are_busy() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnp 2>/dev/null | grep -Eq ':(80|443)[[:space:]]'
+    return
+  fi
+
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -ltnp 2>/dev/null | grep -Eq ':(80|443)[[:space:]]'
+    return
+  fi
+
+  return 1
+}
+
+configure_existing_caddy() {
+  existing_caddy="$1"
+  caddy_container="${existing_caddy%%:*}"
+  caddyfile_path="${existing_caddy#*:}"
+  backup_path="${caddyfile_path}.bak.$(date +%Y%m%d%H%M%S)"
+  start_marker="# reminder managed start"
+  end_marker="# reminder managed end"
+
+  log "Configuring existing Caddy container ${caddy_container} with ${DOMAIN} -> 127.0.0.1:${APP_PORT}."
+
+  cp "$caddyfile_path" "$backup_path"
+  sed -i "/^${start_marker}$/,/^${end_marker}$/d" "$caddyfile_path"
+
+  cat >> "$caddyfile_path" <<EOF
+
+${start_marker}
+${DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:${APP_PORT}
+}
+${end_marker}
+EOF
+
+  if docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+    log "Existing Caddy reloaded successfully."
+    return 0
+  fi
+
+  log "Existing Caddy reload failed. Restoring previous Caddyfile."
+  cp "$backup_path" "$caddyfile_path"
+  docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+  exit 1
+}
+
 main() {
   install_docker
   require_compose
+  derive_app_port
 
   cd "$DEPLOY_DIR"
 
@@ -65,10 +145,22 @@ main() {
   mkdir -p data
 
   log "Validating production compose file."
-  docker compose -f "$COMPOSE_FILE" config >/dev/null
+  docker compose --profile standalone -f "$COMPOSE_FILE" config >/dev/null
 
-  log "Starting production stack."
-  docker compose -f "$COMPOSE_FILE" up -d --build
+  existing_caddy=""
+  if host_web_ports_are_busy; then
+    if existing_caddy="$(find_existing_caddy_container)"; then
+      log "Host web ports are already owned by an existing Caddy. Starting only the app container."
+      docker compose -f "$COMPOSE_FILE" up -d --build reminder
+      configure_existing_caddy "$existing_caddy"
+    else
+      log "Host ports 80/443 are busy, but no reusable Caddy container was found."
+      exit 1
+    fi
+  else
+    log "Starting production stack with standalone Caddy."
+    docker compose --profile standalone -f "$COMPOSE_FILE" up -d --build
+  fi
 
   log "Waiting for local health check."
   for attempt in $(seq 1 30); do

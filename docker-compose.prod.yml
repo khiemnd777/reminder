@@ -6,6 +6,8 @@ services:
     container_name: reminder
     env_file:
       - ${APP_ENV_FILE:-.env}
+    ports:
+      - "127.0.0.1:${APP_PORT:-8086}:${APP_PORT:-8086}"
     volumes:
       - ./data:/data
     restart: unless-stopped
@@ -15,6 +17,8 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: reminder-caddy
+    profiles:
+      - standalone
     depends_on:
       - reminder
     env_file:
